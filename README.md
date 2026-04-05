@@ -1,5 +1,5 @@
 # EIE 401: Procesamiento Digital Multimedia (PUCV 2026-1)
-#Camilo Andres Ladino Morales
+# Camilo Andres Ladino Morales
 
 ## 📚 Descripción del Curso
 Asignatura electiva de 7° semestre de Ingeniería Eléctrica en la Pontificia Universidad Católica de Valparaíso (PUCV). Impartida por el **Prof. Jorge Hernán Cárdenas** (PhD(c) Ingeniería Eléctrica).
