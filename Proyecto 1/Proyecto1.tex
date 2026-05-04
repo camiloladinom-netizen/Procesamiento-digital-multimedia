@@ -1,0 +1,164 @@
+\documentclass[conference]{IEEEtran}
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\begin{document}
+	
+	% ==========================================
+	% TÍTULO Y AUTOR
+	% ==========================================
+	\title{Extracción de Señales Transitorias de Ondas Gravitacionales mediante Técnicas de Procesamiento Digital y Blanqueo Espectral}
+	
+	\author{\IEEEauthorblockN{Camilo Andrés Ladino Morales}
+		\IEEEauthorblockA{\textit{ID: 707004076-4} \\
+			\textit{EIE401-1 Procesamiento Digital Multimedia (1S2026)}\\
+			Pontificia Universidad Católica de Valparaíso \\
+			Profesor: Jorge Cárdenas}}
+	
+	\maketitle
+	
+	% ==========================================
+	% ABSTRACT
+	% ==========================================
+	\begin{abstract}
+		La detección de ondas gravitacionales por los interferómetros LIGO y VIRGO constituye un avance fundamental en la astrofísica observacional. No obstante, el desafío primario radica en que las señales transitorias originadas por eventos de coalescencia se encuentran profundamente inmersas en ruido instrumental y sísmico de naturaleza no blanca. Este documento detalla el desarrollo de un pipeline computacional en Python para extraer la firma gravitacional (chirp) de un evento real a partir del catálogo GWOSC. La metodología implementada abarca la estimación de la Densidad Espectral de Potencia (PSD) mediante el método de Welch, el acondicionamiento de la señal a través de un blanqueo espectral (whitening) estructurado por bloques, filtrado pasa-banda acausal y análisis de resolución conjunta tiempo-frecuencia. Los resultados evidencian cómo este flujo suprime las componentes estacionarias de baja frecuencia del ruido, aislando exitosamente el barrido de frecuencias característico y permitiendo su re-muestreo a una tasa estándar de 44.1 kHz para la transducción audio-acústica del evento físico.
+	\end{abstract}
+	
+	% ==========================================
+	% 1. INTRODUCCIÓN
+	% ==========================================
+	\section{Introducción}
+	El 14 de septiembre de 2015, las instalaciones de Advanced LIGO registraron por primera vez las ondulaciones del espacio-tiempo originadas por la fusión de un sistema binario de agujeros negros, marcando el inicio de la astronomía de ondas gravitacionales \cite{gw150914detectors}. La minúscula amplitud del strain gravitacional, del orden de $10^{-21}$, impone un reto analítico superlativo: la señal queda enmascarada por niveles abrumadores de ruido sísmico, térmico y de disparo cuántico (shot noise).
+	
+	Para la identificación de las señales \textit{chirp} transitorias —patrones donde tanto la frecuencia como la amplitud aumentan exponencialmente hasta el punto de fusión— es imperativo emplear algoritmos avanzados de Procesamiento Digital de Señales (DSP) \cite{raman2017signal}. El presente proyecto aborda la reconstrucción computacional de este proceso. A partir de los datos crudos proporcionados por el Gravitational Wave Open Science Center (GWOSC), se diseñó una solución en un entorno Jupyter Notebook que modela el protocolo estándar de LIGO: caracterización estocástica del ruido de fondo, aplanamiento espectral, limitación de banda y conversión de formato para el análisis cualitativo y sonoro de la detección.
+	
+	% ==========================================
+	% 2. MARCO TEÓRICO
+	% ==========================================
+	\section{Marco Teórico}
+	El tratamiento digital de los datos interferométricos descansa sobre la premisa de que el ruido de fondo, aunque coloreado, puede modelarse localmente como un proceso estocástico estacionario en sentido amplio.
+	
+	\subsection{Densidad Espectral de Potencia (PSD)}
+	La distribución de la varianza del ruido en el dominio de la frecuencia no es uniforme. Para cuantificarla, se utiliza la PSD unilateral, $S_n(f)$, la cual es crítica para ponderar las distintas bandas frecuenciales. Una estimación empírica robusta se obtiene mediante el método de Welch, que divide la serie de tiempo en ventanas solapadas, calcula el periodograma modificado de cada una y promedia los resultados para reducir la varianza estadística del estimador \cite{abbott2020guide}.
+	
+	\subsection{Blanqueo Espectral (Whitening)}
+	El ruido coloreado perjudica la relación señal a ruido (SNR) en las bandas de interés. El proceso de \textit{whitening} transforma el ruido de entrada en un proceso de espectro plano (ruido blanco). Matemáticamente, para una señal $h(t)$ con transformada de Fourier $\tilde{h}(f)$, la señal blanqueada $\tilde{h}_w(f)$ se obtiene ponderando inversamente por la raíz de la PSD \cite{whiteningprocedure}:
+	\begin{equation}
+		\tilde{h}_w(f) = \frac{\tilde{h}(f)}{\sqrt{S_n(f)}}
+	\end{equation}
+	Este proceso atenúa fuertemente las bandas dominadas por el ruido sísmico (bajas frecuencias) y el shot noise (altas frecuencias), priorizando el rango de máxima sensibilidad del detector (entre 30 Hz y 400 Hz) \cite{belahcene2019searching}.
+	
+	% ==========================================
+	% 3. METODOLOGÍA
+	% ==========================================
+	\section{Metodología}
+	El desarrollo fue programado en un Jupyter Notebook. El código fue estructurado para procesar iterativamente la señal completa sin recurrir a recortes arbitrarios predefinidos, manejando dinámicamente archivos en formato HDF5 y TXT con frecuencias de muestreo variables (ej. 4096 Hz).
+	
+	\subsubsection{Carga y Acondicionamiento de Datos}
+	La ingesta de datos extrae el vector de \textit{strain} y la frecuencia de muestreo intrínseca desde los metadatos. Se implementó una lógica de submuestreo de visualización exclusivo para las gráficas, previniendo excepciones de memoria (\textit{MemoryError}) al manipular archivos de larga duración.
+	
+	\subsubsection{Cálculo de la PSD y Transformadas}
+	Se aplicó la función \texttt{scipy.signal.welch} empleando ventanas de 4 segundos. En paralelo, se ejecutó la FFT real (\texttt{rfft}) sobre la señal completa para obtener su representación espectral base, que serviría de insumo para el blanqueo.
+	
+	\subsubsection{Blanqueo por Bloques con Solape}
+	Para viabilizar el procesamiento de señales extensas sin comprometer la memoria RAM, el \textit{whitening} se ejecutó en bloques temporales de 16 segundos con un solape de 2 segundos. A cada bloque se le aplicó una ventana Tukey (cosine-tapered) para atenuar fugas espectrales y discontinuidades en los bordes antes de procesar la FFT, ponderar por la PSD y retornar al tiempo mediante la IFFT.
+	
+	\subsubsection{Filtrado Butterworth Acausal}
+	La señal blanqueada se sometió a un filtro pasa-banda Butterworth de cuarto orden, con frecuencias de corte dinámicamente ajustadas, nominalmente entre 30 Hz y 350 Hz. Para evitar la alteración de fase temporal de la onda, la convolución se realizó de forma bidireccional (acausal) mediante la función \texttt{filtfilt} \cite{berry2020}.
+	
+	\subsubsection{Espectrogramas y Re-muestreo (Resampling)}
+	La evolución tiempo-frecuencia se representó calculando el cuadrado de la magnitud de la Transformada de Fourier a Corto Tiempo (STFT). Posteriormente, la señal extraída se diezmó/interpoló matemáticamente a 44100 Hz y se codificó como archivo de audio PCM WAV de 16 bits \cite{gwoscworkshop}.
+	
+	% ==========================================
+	% 4. RESULTADOS
+	% ==========================================
+	\section{Resultados y Análisis}
+	
+	La ejecución del algoritmo validó la pertinencia de cada etapa del DSP.
+	
+	% --- GRÁFICA PSD ---
+	\begin{figure}[htbp]
+		\centerline{\includegraphics[width=\columnwidth]{"G:/Mi unidad/EIE401-1-PROCESAMIENTO DIGITAL MULTIMEDIA(1S2026)/Proyecto/output3.png"}}
+		\caption{Densidad Espectral de Potencia estimada por el método de Welch. Se evidencia la muralla sísmica a frecuencias $<20$ Hz y la degradación por ruido cuántico a frecuencias mayores.}
+		\label{fig:psd}
+	\end{figure}
+	
+	La Fig. \ref{fig:psd} ilustra el perfil coloreado característico de LIGO H1. Las resonancias mecánicas y térmicas son evidentes como picos estrechos en el espectro. Al aplicar el blanqueo seguido del filtro pasa-banda, las macro-tendencias del ruido fueron virtualmente suprimidas.
+	
+	% --- GRÁFICA ZOOM TEMPORAL ---
+	\begin{figure}[htbp]
+		\centerline{\includegraphics[width=\columnwidth]{"G:/Mi unidad/EIE401-1-PROCESAMIENTO DIGITAL MULTIMEDIA(1S2026)/Proyecto/output5.png"}}
+		\caption{Zoom temporal de la señal procesada. La oscilación característica del chirp resalta por encima del ruido de fondo previamente aplanado.}
+		\label{fig:temporal}
+	\end{figure}
+	
+	Al localizar el valor máximo absoluto de energía temporal en la señal resultante, se observó (Fig. \ref{fig:temporal}) una perturbación coherente que coincide morfológicamente con la plantilla teórica predicha por la Relatividad General.
+	
+	% --- ESPECTROGRAMA ---
+	\begin{figure}[htbp]
+		\centerline{\includegraphics[width=\columnwidth]{"G:/Mi unidad/EIE401-1-PROCESAMIENTO DIGITAL MULTIMEDIA(1S2026)/Proyecto/output6.png"}}
+		\caption{Arriba: Espectrograma de la señal cruda, dominada por bandas horizontales de ruido. Abajo: Espectrograma de la señal blanqueada y filtrada; el trazo ascendente revela nítidamente la cinemática de la fusión binaria.}
+		\label{fig:espectrograma}
+	\end{figure}
+	
+	El análisis cualitativo fundamental se presenta en la Fig. \ref{fig:espectrograma}. El espectrograma crudo es visualmente opaco, ocultando el evento bajo franjas estacionarias. En contraste, la versión acondicionada revela la morfología inconfundible del \textit{chirp}: un barrido de frecuencia que aumenta dramáticamente en intensidad y frecuencia instantes antes del colapso del sistema binario.
+	
+	Finalmente, el archivo de audio remuestreado a 44.1 kHz demostró que la alteración de la tasa de muestreo (\textit{resampling}), acompañada de normalización de amplitud, permite la caracterización psicoacústica del evento sin introducir alteraciones espectrales perjudiciales (aliasing).
+	
+	% ==========================================
+	% 5. CONCLUSIONES
+	% ==========================================
+	\section{Conclusiones}
+	El diseño e implementación de este protocolo de Procesamiento Digital de Señales demostró que la extracción de la firma \textit{chirp} gravitacional requiere un acondicionamiento espectral estricto. La mera aplicación de filtros pasa-banda es insuficiente; el ruido de los interferómetros es de espectro coloreado y amplitud variable, por lo que el \textit{whitening} basado en la PSD empírica se confirma como el paso crítico para el descubrimiento de la señal. Adicionalmente, estructurar el procesamiento computacional a través de bloques de memoria y ventanas superpuestas comprobó ser un acercamiento eficiente para evitar errores de memoria (overflow) propios del tratamiento de Big Data astrofísico en Jupyter Notebooks. La traducción a un formato audible valida la viabilidad de la representación multimodal de los datos abiertos suministrados por LIGO y GWOSC.
+	
+	% ==========================================
+	% REFERENCIAS 
+	% ==========================================
+	\begin{thebibliography}{00}
+		
+		\bibitem{abbott2020guide}
+		B. P. Abbott \textit{et al.}, ``A guide to LIGO-Virgo detector noise and extraction of transient gravitational-wave signals,'' \textit{Class. Quantum Grav.}, vol. 37, p. 055002, 2020. doi: 10.1088/1361-6382/ab685e.
+		
+		\bibitem{belahcene2019searching}
+		I. Belahcene, ``Searching for gravitational waves produced by cosmic strings in LIGO-Virgo data,'' Ph.D. thesis, 2019. [Online]. Available: \url{https://tel.archives-ouvertes.fr/tel-02878783}.
+		
+		\bibitem{raman2017signal}
+		A. Raman, ``On the Signal Processing Operations in LIGO signals,'' in \textit{Proc. IEEE GlobalSIP}, 2018. doi: 10.1109/GlobalSIP.2018.8646464.
+		
+		\bibitem{gwosc}
+		Gravitational Wave Open Science Center (GWOSC), ``GWTC Catalog.'' [Online]. Available: \url{https://gwosc.org/eventapi/html/GWTC/}.
+		
+		\bibitem{gw150914detectors}
+		B. P. Abbott \textit{et al.}, ``GW150914: The Advanced LIGO Detectors in the Era of First Discoveries,'' \textit{Phys. Rev. Lett.}, vol. 116, Apr. 2016.
+		
+		\bibitem{gw150914search}
+		B. P. Abbott \textit{et al.}, ``GW150914: First results from the search for binary black hole coalescence,'' \textit{Phys. Rev. D}, vol. 93, 2016. 
+		
+		\bibitem{losctutorial}
+		S. Fairhurst \textit{et al.}, ``LIGO Open Science Center Tutorial,'' Univ. Glasgow, 2016. 
+		
+		\bibitem{ligodata}
+		LIGO Laboratory, ``Use LIGO/Virgo/KAGRA Data,'' Caltech. [Online]. Available: \url{https://www.ligo.caltech.edu/page/ligo-data}.
+		
+		\bibitem{gwoscworkshop}
+		GWOSC Collaboration, ``GW Open Data Workshop: Tutorials,'' 2025. [Online]. Available: \url{https://gw-odw.thinkific.com/courses/odw2025}.
+		
+		\bibitem{whiteningprocedure}
+		S. Waldman, ``Gravitational Wave Astronomy with LIGO: from Data to Science,'' LIGO Document P1300173, 2013.
+		
+		\bibitem{berry2020}
+		C. P. L. Berry, ``An Introduction to LIGO--Virgo Data Analysis,'' 2020. [Online]. Available: \url{https://cplberry.com/2020/02/09/gw-data-guides/}.
+		
+		\bibitem{ligowavephysics}
+		J. Kanner, ``Wave Physics with LIGO Data,'' LIGO-Lab CIT, 2019.
+		
+	\end{thebibliography}
+	
+\end{document}
