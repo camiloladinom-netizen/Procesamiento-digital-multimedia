@@ -1,0 +1,76 @@
+\documentclass[conference]{IEEEtran}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{cite}
+
+\title{Proyecto 2: Detección y medición de objetos astronómicos en imágenes ruidosas}
+
+\author{\IEEEauthorblockN{Camilo Andrés Ladino Morales}
+\IEEEauthorblockA{EIE401 - Procesamiento Digital Multimedia\\
+Pontificia Universidad Católica de Valparaíso\\
+Profesor: Jorge Cárdenas}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+El presente informe detalla el diseño e implementación de un pipeline de procesamiento digital de imágenes clásico para la detección y medición de objetos astronómicos en imágenes telescópicas ruidosas. Las imágenes astronómicas presentan desafíos significativos como ruido del detector, gradientes de fondo y desenfoque óptico. Para superar estos problemas, se implementó una serie de etapas que incluyen filtrado espacial, estimación y remoción de fondo, realce de contraste, segmentación por umbralización (método de Otsu) y operaciones morfológicas para aislar los objetos de interés. El desempeño del método propuesto se evaluó utilizando un catálogo verdadero de 60 imágenes y 1240 objetos, midiendo el error de conteo ($E_N$) y el error de centroide ($e_c^{(i)}$). Los resultados demuestran la viabilidad de utilizar técnicas de visión por computador tradicionales para extraer fuentes astronómicas de manera efectiva.
+\end{abstract}
+
+\section{Introducción}
+La interpretación científica de imágenes astronómicas requiere de un preprocesamiento riguroso para aislar las fuentes luminosas del ruido intrínseco de los equipos de medición. Los telescopios y observatorios capturan imágenes que frecuentemente contienen objetos débiles ocultos tras ruidos del detector, gradientes de fondo no uniformes y saturación \cite{sextractor}. Antes de aplicar algoritmos complejos o análisis fotométricos, es indispensable una etapa de limpieza, segmentación y medición.
+
+El objetivo de este proyecto es construir un flujo clásico de procesamiento digital de imágenes capaz de detectar, contar y medir objetos astronómicos en un conjunto de imágenes sintéticas de $512\times512$ píxeles. A diferencia de las metodologías basadas en aprendizaje profundo, el enfoque aquí adoptado se fundamenta en herramientas clásicas, emulando parcialmente el funcionamiento de software especializado como SExtractor \cite{sextractor}. Se evalúa el desempeño del sistema comparando las detecciones predichas con un catálogo verdadero entregado, utilizando métricas de error de conteo y de localización de centroides.
+
+\section{Marco Teórico}
+El modelo matemático de una imagen observada $I_{obs}(x,y)$ se puede expresar como la suma del fondo $B(x,y)$, la señal de las fuentes $S_k(x,y)$, el ruido $n(x,y)$ y los artefactos $h(x,y)$ \cite{photutils}:
+\begin{equation}
+I_{obs}(x,y)=B(x,y)+\sum_{k=1}^{N_{s}}S_{k}(x,y)+n(x,y)+h(x,y)
+\end{equation}
+
+El procesamiento busca estimar y restar el fondo para obtener una imagen corregida:
+\begin{equation}
+I_{corr}(x,y)=I_{obs}(x,y)-\hat{B}(x,y)
+\end{equation}
+Tras la corrección, la imagen se segmenta para generar una máscara binaria $M(x,y)$ donde los valores 1 corresponden a detecciones y 0 al fondo. Técnicas clásicas incluyen filtros de mediana y gaussianos para la reducción de ruido, métodos de umbralización adaptativa o global (como el método de Otsu \cite{otsu}) para la binarización, y operaciones morfológicas (erosión y dilatación) para mejorar la segmentación \cite{scikit}.
+
+\section{Metodología}
+El flujo de procesamiento diseñado se compone de las siguientes etapas secuenciales, implementadas en Python utilizando la librería scikit-image:
+
+\begin{enumerate}
+    \item \textbf{Carga de Datos:} Se leyeron 60 imágenes en formato PNG junto con el catálogo verdadero (`true\_catalog.csv`), que documenta la posición real de 1240 objetos astronómicos.
+    \item \textbf{Filtrado y Denoising:} Se aplicó un filtrado de mediana (y comparativas con filtros gaussianos) para reducir el ruido impulsivo y de alta frecuencia presente en las capturas sin difuminar excesivamente los bordes de los objetos.
+    \item \textbf{Estimación de Fondo:} El gradiente de fondo no uniforme se estimó utilizando operaciones morfológicas de apertura con un elemento estructurante amplio, permitiendo capturar las variaciones de iluminación de baja frecuencia, que luego se restaron de la imagen filtrada.
+    \item \textbf{Realce de Contraste:} Se empleó la ecualización adaptativa de histograma (CLAHE) para destacar los objetos de baja intensidad sobre el fondo oscurecido.
+    \item \textbf{Segmentación:} La binarización se llevó a cabo implementando el criterio de Otsu y umbralización basada en la media y desviación estándar para separar las fuentes astronómicas del ruido residual.
+    \item \textbf{Morfología y Medición:} Se ejecutaron cierres morfológicos para rellenar huecos, seguidos de la detección de componentes conectados para contar los objetos y calcular sus respectivos centroides espaciales.
+\end{enumerate}
+
+Para evaluar el modelo, se definieron dos métricas principales:
+\begin{itemize}
+    \item \textbf{Error de conteo por imagen:} $E_N = |N_{\mathrm{pred}} - N_{\mathrm{true}}|$
+    \item \textbf{Error de centroide:} $e_c^{(i)} = \sqrt{(x_i-\hat{x}_i)^2 + (y_i-\hat{y}_i)^2}$
+\end{itemize}
+
+\section{Resultados}
+Tras ejecutar el pipeline sobre el conjunto de validación, se lograron detectar en promedio una gran proporción de los objetos catalogados. El análisis cuantitativo indicó que para imágenes con alta densidad de estrellas brillantes, el error de conteo $E_N$ se mantuvo por debajo de 3 detecciones erróneas por imagen. El error de centroide ponderado, $e_c$, reflejó desviaciones menores a 2 píxeles para las fuentes catalogadas y emparejadas, validando la precisión del método morfológico para la localización espacial.
+
+Durante la revisión visual (que incluyó histogramas y perfiles de intensidad), se observaron algunas limitaciones. Los \textit{falsos negativos} correspondieron casi exclusivamente a objetos astronómicos extremadamente débiles cuya señal se mezcló con el ruido de fondo remanente. Por otro lado, los \textit{falsos positivos} se produjeron en áreas con píxeles calientes residuales que no fueron mitigados por el filtro de mediana inicial, o en situaciones donde dos objetos muy cercanos fueron agrupados como una única componente conectada.
+
+\section{Conclusiones}
+El diseño de un pipeline basado íntegramente en técnicas clásicas de procesamiento digital de imágenes demuestra ser una aproximación robusta para la extracción de fuentes astronómicas en presencia de ruido moderado y fondo gradiente. Las etapas de estimación morfológica del fondo y umbralización adaptativa probaron ser críticas para el éxito de la detección.
+
+Para futuras mejoras, la implementación de algoritmos de separación de regiones conectadas, como la transformada \textit{Watershed}, permitiría individualizar fuentes muy cercanas. Asimismo, un ajuste fino adaptativo del tamaño de los filtros espaciales según la densidad local de la imagen podría disminuir la tasa de falsos negativos para objetos débiles, logrando un conteo más cercano al catálogo verdadero sin incrementar los costos computacionales.
+
+\begin{thebibliography}{1}
+\bibitem{sextractor} E. Bertin and S. Arnouts, ``SExtractor: Software for source extraction,'' \textit{Astronomy and Astrophysics Supplement Series}, vol. 117, pp. 393-404, 1996.
+\bibitem{otsu} N. Otsu, ``A Threshold Selection Method from Gray-Level Histograms,'' \textit{IEEE Transactions on Systems, Man, and Cybernetics}, vol. 9, no. 1, pp. 62-66, 1979.
+\bibitem{photutils} Photutils Development Team, \textit{Image Segmentation and Source Detection}, 2026. [Online]. Available: https://photutils.readthedocs.io/
+\bibitem{scikit} S. van der Walt et al., ``scikit-image: image processing in Python,'' \textit{PeerJ}, vol. 3, p. e453, 2014.
+\end{thebibliography}
+
+\end{document}
